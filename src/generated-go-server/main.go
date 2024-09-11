@@ -3,7 +3,7 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
@@ -15,12 +15,16 @@ import (
 	"net/http"
 
 	openapi "github.com/GIT_USER_ID/GIT_REPO_ID/go"
+	repositories "github.com/GIT_USER_ID/GIT_REPO_ID/repositories"
 )
 
 func main() {
+	db := repositories.SetupDB()
+	defer db.Close()	
+
 	log.Printf("Server started")
 
-	DefaultAPIService := openapi.NewDefaultAPIService()
+	DefaultAPIService := openapi.NewDefaultAPIService(db)
 	DefaultAPIController := openapi.NewDefaultAPIController(DefaultAPIService)
 
 	router := openapi.NewRouter(DefaultAPIController)

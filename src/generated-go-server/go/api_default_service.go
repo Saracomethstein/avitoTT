@@ -3,7 +3,7 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
@@ -12,8 +12,9 @@ package openapi
 
 import (
 	"context"
-	"net/http"
+	"database/sql"
 	"errors"
+	"net/http"
 	// "reflect"
 )
 
@@ -21,11 +22,14 @@ import (
 // This service should implement the business logic for every endpoint for the DefaultAPI API.
 // Include any external packages or services that will be required by this service.
 type DefaultAPIService struct {
+	DB *sql.DB
 }
 
 // NewDefaultAPIService creates a default api service
-func NewDefaultAPIService() *DefaultAPIService {
-	return &DefaultAPIService{}
+func NewDefaultAPIService(db *sql.DB) *DefaultAPIService {
+	return &DefaultAPIService{
+		DB: db,
+	}
 }
 
 // CheckServer - Проверка доступности сервера
@@ -55,22 +59,34 @@ func (s *DefaultAPIService) CreateBid(ctx context.Context, createBidRequest Crea
 
 // CreateTender - Создание нового тендера
 func (s *DefaultAPIService) CreateTender(ctx context.Context, createTenderRequest CreateTenderRequest) (ImplResponse, error) {
-	// TODO - update CreateTender with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	query := `
+    INSERT INTO tenders (name, description, service_type, status, organization_id, creator_username) 
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id, name, description, service_type, status, organization_id, creator_username;
+    `
+    var tender Tender
+    err := s.DB.QueryRowContext(ctx, query,
+        createTenderRequest.Name,
+        createTenderRequest.Description,
+        createTenderRequest.ServiceType,
+        createTenderRequest.Status,
+        createTenderRequest.OrganizationId,
+        createTenderRequest.CreatorUsername).Scan(
+        &tender.Id,
+        &tender.Name,
+        &tender.Description,
+        &tender.ServiceType,
+        &tender.Status,
+        &tender.OrganizationId)
 
-	// TODO: Uncomment the next line to return response Response(200, Tender{}) or use other options such as http.Ok ...
-	// return Response(200, Tender{}), nil
+    if err != nil {
+        return ImplResponse{}, err
+    }
 
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(401, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
-	return Response(http.StatusNotImplemented, nil), errors.New("CreateTender method not implemented")
+    return ImplResponse{
+        Code: http.StatusOK,
+        Body: tender,
+    }, nil
 }
 
 // EditBid - Редактирование параметров предложения
@@ -207,19 +223,32 @@ func (s *DefaultAPIService) GetTenderStatus(ctx context.Context, tenderId string
 
 // GetTenders - Получение списка тендеров
 func (s *DefaultAPIService) GetTenders(ctx context.Context, limit int32, offset int32, serviceType []TenderServiceType) (ImplResponse, error) {
-	// TODO - update GetTenders with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+    query := `SELECT id, name, description, service_type, status, version, organization_id, created_at FROM tenders WHERE service_type IN (?) LIMIT ? OFFSET ?`
 
-	// TODO: Uncomment the next line to return response Response(200, []Tender{}) or use other options such as http.Ok ...
-	// return Response(200, []Tender{}), nil
+    rows, err := s.DB.QueryContext(ctx, query, serviceType, limit, offset)
+    if err != nil {
+        return ImplResponse{}, err
+    }
+    defer rows.Close()
+    
+    var tenders []Tender
+    for rows.Next() {
+        var tender Tender
+        if err := rows.Scan(&tender.Id, &tender.Name, &tender.Description); err != nil {
+            return ImplResponse{}, err
+        }
+        tenders = append(tenders, tender)
+    }
+    
+    if err := rows.Err(); err != nil {
+        return ImplResponse{}, err
+    }
 
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
-	return Response(http.StatusNotImplemented, nil), errors.New("GetTenders method not implemented")
+    response := ImplResponse{
+        Code: http.StatusOK,
+        Body: tenders,
+    }
+    return response, nil
 }
 
 // GetUserBids - Получение списка ваших предложений

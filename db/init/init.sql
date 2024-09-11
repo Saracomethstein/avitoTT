@@ -22,3 +22,14 @@ CREATE TABLE organization_responsible (
     organization_id INT REFERENCES organization(id) ON DELETE CASCADE,
     user_id INT REFERENCES employee(id) ON DELETE CASCADE
 );
+
+CREATE TABLE tenders (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    service_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    organization_id INT REFERENCES organization(id) ON DELETE CASCADE,
+    version INT DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
