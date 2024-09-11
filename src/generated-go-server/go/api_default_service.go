@@ -30,19 +30,6 @@ func NewDefaultAPIService() *DefaultAPIService {
 
 // CheckServer - Проверка доступности сервера
 func (s *DefaultAPIService) CheckServer(ctx context.Context) (ImplResponse, error) {
-	// TODO - update CheckServer with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, string{}) or use other options such as http.Ok ...
-	// return Response(200, string{}), nil
-
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
-	// return Response(http.StatusNotImplemented, nil), errors.New("CheckServer method not implemented")
 	return ImplResponse{Code: http.StatusOK, Body: "ok"}, nil
 }
 
