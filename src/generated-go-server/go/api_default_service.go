@@ -14,7 +14,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
+	"fmt"
+	"strings"
 	// "reflect"
 )
 
@@ -60,18 +63,19 @@ func (s *DefaultAPIService) CreateBid(ctx context.Context, createBidRequest Crea
 // CreateTender - Создание нового тендера
 func (s *DefaultAPIService) CreateTender(ctx context.Context, createTenderRequest CreateTenderRequest) (ImplResponse, error) {
 	query := `
-    INSERT INTO tenders (name, description, service_type, status, organization_id, creator_username) 
+    INSERT INTO tenders (name, description, service_type, status, organization_id) 
     VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING id, name, description, service_type, status, organization_id, creator_username;
+    RETURNING id, name, description, service_type, status, organization_id;
     `
+	log.Println("Post request in func.")
+
     var tender Tender
     err := s.DB.QueryRowContext(ctx, query,
         createTenderRequest.Name,
         createTenderRequest.Description,
         createTenderRequest.ServiceType,
         createTenderRequest.Status,
-        createTenderRequest.OrganizationId,
-        createTenderRequest.CreatorUsername).Scan(
+        createTenderRequest.OrganizationId).Scan(
         &tender.Id,
         &tender.Name,
         &tender.Description,
@@ -80,7 +84,8 @@ func (s *DefaultAPIService) CreateTender(ctx context.Context, createTenderReques
         &tender.OrganizationId)
 
     if err != nil {
-        return ImplResponse{}, err
+		log.Println("Tender get error!")
+        return ImplResponse{Code: http.StatusInternalServerError}, err
     }
 
     return ImplResponse{
@@ -223,32 +228,74 @@ func (s *DefaultAPIService) GetTenderStatus(ctx context.Context, tenderId string
 
 // GetTenders - Получение списка тендеров
 func (s *DefaultAPIService) GetTenders(ctx context.Context, limit int32, offset int32, serviceType []TenderServiceType) (ImplResponse, error) {
-    query := `SELECT id, name, description, service_type, status, version, organization_id, created_at FROM tenders WHERE service_type IN (?) LIMIT ? OFFSET ?`
-
-    rows, err := s.DB.QueryContext(ctx, query, serviceType, limit, offset)
-    if err != nil {
-        return ImplResponse{}, err
-    }
-    defer rows.Close()
-    
-    var tenders []Tender
-    for rows.Next() {
-        var tender Tender
-        if err := rows.Scan(&tender.Id, &tender.Name, &tender.Description); err != nil {
-            return ImplResponse{}, err
-        }
-        tenders = append(tenders, tender)
-    }
-    
-    if err := rows.Err(); err != nil {
-        return ImplResponse{}, err
-    }
-
-    response := ImplResponse{
-        Code: http.StatusOK,
-        Body: tenders,
-    }
-    return response, nil
+	    // Преобразование среза в строку
+		if len(serviceType) == 0 {
+			query := `SELECT id, name, description, service_type, status, version, organization_id, created_at
+					  FROM tenders
+					  LIMIT $1 OFFSET $2`
+			rows, err := s.DB.QueryContext(ctx, query, limit, offset)
+			if err != nil {
+				return ImplResponse{Code: http.StatusInternalServerError, Body: "Error querying database"}, err
+			}
+			defer rows.Close()
+	
+			var tenders []Tender
+			for rows.Next() {
+				var tender Tender
+				if err := rows.Scan(&tender.Id, &tender.Name, &tender.Description, &tender.ServiceType, &tender.Status, &tender.OrganizationId, &tender.Version, &tender.CreatedAt); err != nil {
+					return ImplResponse{Code: http.StatusInternalServerError, Body: "Error scanning rows"}, err
+				}
+				tenders = append(tenders, tender)
+			}
+	
+			if err := rows.Err(); err != nil {
+				return ImplResponse{Code: http.StatusInternalServerError, Body: "Error during iteration"}, err
+			}
+	
+			response := ImplResponse{
+				Code: http.StatusOK,
+				Body: tenders,
+			}
+			return response, nil
+		}
+	
+		// Преобразование среза в строку
+		serviceTypeStrings := make([]string, len(serviceType))
+		for i, st := range serviceType {
+			serviceTypeStrings[i] = string(st) // предполагаем, что TenderServiceType можно привести к строке
+		}
+		serviceTypeStr := strings.Join(serviceTypeStrings, "','") // Форматируем как строки SQL (например, 'type1','type2')
+		serviceTypeStr = fmt.Sprintf("('%s')", serviceTypeStr) // Оборачиваем в скобки
+	
+		query := fmt.Sprintf(`SELECT id, name, description, service_type, status, version, organization_id, created_at
+							 FROM tenders
+							 WHERE service_type IN %s
+							 LIMIT $1 OFFSET $2`, serviceTypeStr)
+	
+		rows, err := s.DB.QueryContext(ctx, query, limit, offset)
+		if err != nil {
+			return ImplResponse{Code: http.StatusInternalServerError, Body: "Error querying database"}, err
+		}
+		defer rows.Close()
+		
+		var tenders []Tender
+		for rows.Next() {
+			var tender Tender
+			if err := rows.Scan(&tender.Id, &tender.Name, &tender.Description, &tender.ServiceType, &tender.Status, &tender.OrganizationId, &tender.Version, &tender.CreatedAt); err != nil {
+				return ImplResponse{Code: http.StatusInternalServerError, Body: "Error scanning rows"}, err
+			}
+			tenders = append(tenders, tender)
+		}
+		
+		if err := rows.Err(); err != nil {
+			return ImplResponse{Code: http.StatusInternalServerError, Body: "Error during iteration"}, err
+		}
+	
+		response := ImplResponse{
+			Code: http.StatusOK,
+			Body: tenders,
+		}
+		return response, nil
 }
 
 // GetUserBids - Получение списка ваших предложений

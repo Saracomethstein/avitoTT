@@ -15,11 +15,10 @@ import (
 	"net/http"
 
 	openapi "github.com/GIT_USER_ID/GIT_REPO_ID/go"
-	repositories "github.com/GIT_USER_ID/GIT_REPO_ID/repositories"
 )
 
 func main() {
-	db := repositories.SetupDB()
+	db := openapi.SetupDB()
 	defer db.Close()	
 
 	log.Printf("Server started")
