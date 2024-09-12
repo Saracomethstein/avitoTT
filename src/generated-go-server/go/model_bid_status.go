@@ -3,29 +3,25 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
 
 package openapi
 
-
 import (
 	"fmt"
 )
-
 
 // BidStatus : Статус предложения
 type BidStatus string
 
 // List of BidStatus
 const (
-	BIG_STATUS_CREATED BidStatus = "Created"
-	BIG_STATUS_PUBLISHED BidStatus = "Published"
-	BIG_STATUS_CANCELED BidStatus = "Canceled"
-	BIG_STATUS_APPROVED BidStatus = "Approved"
-	BIG_STATUS_REJECTED BidStatus = "Rejected"
+	//CREATED   BidStatus = "Created"
+	//PUBLISHED BidStatus = "Published"
+	CANCELED BidStatus = "Canceled"
 )
 
 // AllowedBidStatusEnumValues is all the allowed values of BidStatus enum
@@ -33,17 +29,13 @@ var AllowedBidStatusEnumValues = []BidStatus{
 	"Created",
 	"Published",
 	"Canceled",
-	"Approved",
-	"Rejected",
 }
 
 // validBidStatusEnumValue provides a map of BidStatuss for fast verification of use input
 var validBidStatusEnumValues = map[BidStatus]struct{}{
-	"Created": {},
+	"Created":   {},
 	"Published": {},
-	"Canceled": {},
-	"Approved": {},
-	"Rejected": {},
+	"Canceled":  {},
 }
 
 // IsValid return true if the value is valid for the enum, false otherwise
@@ -62,8 +54,6 @@ func NewBidStatusFromValue(v string) (BidStatus, error) {
 
 	return "", fmt.Errorf("invalid value '%v' for BidStatus: valid values are %v", v, AllowedBidStatusEnumValues)
 }
-
-
 
 // AssertBidStatusRequired checks if the required fields are not zero-ed
 func AssertBidStatusRequired(obj BidStatus) error {

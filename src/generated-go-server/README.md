@@ -15,7 +15,7 @@ To see how to make this your own, look here:
 [README](https://openapi-generator.tech)
 
 - API version: 1.0
-- Build date: 2024-09-10T10:16:04.551407215Z[Etc/UTC]
+- Build date: 2024-09-11T17:15:11.959795155Z[Etc/UTC]
 - Generator version: 7.9.0-SNAPSHOT
 
 
@@ -37,3 +37,4 @@ Once image is built use
 ```
 docker run --rm -it openapi
 ```
+# DreamTeam

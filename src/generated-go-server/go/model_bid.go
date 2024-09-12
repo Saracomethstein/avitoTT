@@ -3,19 +3,17 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
 
 package openapi
 
-
 import (
 	"errors"
+	"time"
 )
-
-
 
 // Bid - Информация о предложении
 type Bid struct {
@@ -42,22 +40,22 @@ type Bid struct {
 	// Номер версии посел правок
 	Version int32 `json:"version"`
 
-	// Серверная дата и время в момент, когда пользователь отправил предложение на создание. Передается в формате RFC3339. 
-	CreatedAt string `json:"createdAt"`
+	// Серверная дата и время в момент, когда пользователь отправил предложение на создание. Передается в формате RFC3339.
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // AssertBidRequired checks if the required fields are not zero-ed
 func AssertBidRequired(obj Bid) error {
 	elements := map[string]interface{}{
-		"id": obj.Id,
-		"name": obj.Name,
+		"id":          obj.Id,
+		"name":        obj.Name,
 		"description": obj.Description,
-		"status": obj.Status,
-		"tenderId": obj.TenderId,
-		"authorType": obj.AuthorType,
-		"authorId": obj.AuthorId,
-		"version": obj.Version,
-		"createdAt": obj.CreatedAt,
+		"status":      obj.Status,
+		"tenderId":    obj.TenderId,
+		"authorType":  obj.AuthorType,
+		"authorId":    obj.AuthorId,
+		"version":     obj.Version,
+		"createdAt":   obj.CreatedAt,
 	}
 	for name, el := range elements {
 		if isZero := IsZeroValue(el); isZero {

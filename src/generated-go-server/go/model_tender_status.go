@@ -3,27 +3,25 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
 
 package openapi
 
-
 import (
 	"fmt"
 )
-
 
 // TenderStatus : Статус тендер
 type TenderStatus string
 
 // List of TenderStatus
 const (
-	CREATED TenderStatus = "Created"
+	CREATED   TenderStatus = "Created"
 	PUBLISHED TenderStatus = "Published"
-	CLOSED TenderStatus = "Closed"
+	CLOSED    TenderStatus = "Closed"
 )
 
 // AllowedTenderStatusEnumValues is all the allowed values of TenderStatus enum
@@ -35,9 +33,9 @@ var AllowedTenderStatusEnumValues = []TenderStatus{
 
 // validTenderStatusEnumValue provides a map of TenderStatuss for fast verification of use input
 var validTenderStatusEnumValues = map[TenderStatus]struct{}{
-	"Created": {},
+	"Created":   {},
 	"Published": {},
-	"Closed": {},
+	"Closed":    {},
 }
 
 // IsValid return true if the value is valid for the enum, false otherwise
@@ -56,8 +54,6 @@ func NewTenderStatusFromValue(v string) (TenderStatus, error) {
 
 	return "", fmt.Errorf("invalid value '%v' for TenderStatus: valid values are %v", v, AllowedTenderStatusEnumValues)
 }
-
-
 
 // AssertTenderStatusRequired checks if the required fields are not zero-ed
 func AssertTenderStatusRequired(obj TenderStatus) error {

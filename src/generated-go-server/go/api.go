@@ -3,7 +3,7 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
@@ -13,15 +13,12 @@ package openapi
 import (
 	"context"
 	"net/http"
-	// "reflect"
 )
-
-
 
 // DefaultAPIRouter defines the required methods for binding the api requests to a responses for the DefaultAPI
 // The DefaultAPIRouter implementation should parse necessary information from the http request,
 // pass the data to a DefaultAPIServicer to perform the required actions, then write the service results to the http response.
-type DefaultAPIRouter interface { 
+type DefaultAPIRouter interface {
 	CheckServer(http.ResponseWriter, *http.Request)
 	CreateBid(http.ResponseWriter, *http.Request)
 	CreateTender(http.ResponseWriter, *http.Request)
@@ -42,12 +39,11 @@ type DefaultAPIRouter interface {
 	UpdateTenderStatus(http.ResponseWriter, *http.Request)
 }
 
-
 // DefaultAPIServicer defines the api actions for the DefaultAPI service
 // This interface intended to stay up to date with the openapi yaml used to generate it,
 // while the service implementation can be ignored with the .openapi-generator-ignore file
 // and updated with the logic required for the API.
-type DefaultAPIServicer interface { 
+type DefaultAPIServicer interface {
 	CheckServer(context.Context) (ImplResponse, error)
 	CreateBid(context.Context, CreateBidRequest) (ImplResponse, error)
 	CreateTender(context.Context, CreateTenderRequest) (ImplResponse, error)

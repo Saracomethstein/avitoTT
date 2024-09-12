@@ -3,7 +3,7 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
@@ -67,8 +67,28 @@ func DefaultErrorHandler(w http.ResponseWriter, _ *http.Request, err error, resu
 		// Handle missing required errors
 		_ = EncodeJSONResponse(err.Error(), func(i int) *int { return &i }(http.StatusUnprocessableEntity), w)
 		return
-	} 
+	}
 
-	// Handle all other errors
 	_ = EncodeJSONResponse(err.Error(), &result.Code, w)
 }
+
+var (
+	ErrNotFound      = errors.New("not found")
+	ErrAlreadyExists = errors.New("already exists")
+)
+
+var (
+	ErrSQLQuery       = errors.New("sql query error")
+	ErrEmptyResultSet = errors.New("empty result set")
+)
+
+var (
+	ErrNoUser             = errors.New("no user found")
+	ErrUserNoRightsTender = errors.New("user does not have persmission for this tender")
+	ErrUserNoRightsBid    = errors.New("user does not have persmission for this bid")
+)
+
+var (
+	ErrNoOrganization    = errors.New("no organization found")
+	ErrOrgNoRightsTender = errors.New("organization not belong to tender")
+)

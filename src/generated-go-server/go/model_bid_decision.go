@@ -3,26 +3,24 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
 
 package openapi
 
-
 import (
 	"fmt"
 )
-
 
 // BidDecision : Решение по предложению
 type BidDecision string
 
 // List of BidDecision
 const (
-	BIG_DECISION_APPROVED BidDecision = "Approved"
-	BIG_DECISION_REJECTED BidDecision = "Rejected"
+	APPROVED BidDecision = "Approved"
+	REJECTED BidDecision = "Rejected"
 )
 
 // AllowedBidDecisionEnumValues is all the allowed values of BidDecision enum
@@ -53,8 +51,6 @@ func NewBidDecisionFromValue(v string) (BidDecision, error) {
 
 	return "", fmt.Errorf("invalid value '%v' for BidDecision: valid values are %v", v, AllowedBidDecisionEnumValues)
 }
-
-
 
 // AssertBidDecisionRequired checks if the required fields are not zero-ed
 func AssertBidDecisionRequired(obj BidDecision) error {

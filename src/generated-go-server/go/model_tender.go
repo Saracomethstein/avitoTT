@@ -3,19 +3,17 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
 
 package openapi
 
-
 import (
 	"errors"
+	"time"
 )
-
-
 
 // Tender - Информация о тендере
 type Tender struct {
@@ -39,21 +37,21 @@ type Tender struct {
 	// Номер версии посел правок
 	Version int32 `json:"version"`
 
-	// Серверная дата и время в момент, когда пользователь отправил тендер на создание. Передается в формате RFC3339. 
-	CreatedAt string `json:"createdAt"`
+	// Серверная дата и время в момент, когда пользователь отправил тендер на создание. Передается в формате RFC3339.
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // AssertTenderRequired checks if the required fields are not zero-ed
 func AssertTenderRequired(obj Tender) error {
 	elements := map[string]interface{}{
-		"id": obj.Id,
-		"name": obj.Name,
-		"description": obj.Description,
-		"serviceType": obj.ServiceType,
-		"status": obj.Status,
+		"id":             obj.Id,
+		"name":           obj.Name,
+		"description":    obj.Description,
+		"serviceType":    obj.ServiceType,
+		"status":         obj.Status,
 		"organizationId": obj.OrganizationId,
-		"version": obj.Version,
-		"createdAt": obj.CreatedAt,
+		"version":        obj.Version,
+		"createdAt":      obj.CreatedAt,
 	}
 	for name, el := range elements {
 		if isZero := IsZeroValue(el); isZero {

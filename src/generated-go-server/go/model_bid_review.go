@@ -3,15 +3,12 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
 
 package openapi
-
-
-
 
 // BidReview - Отзыв о предложении
 type BidReview struct {
@@ -22,16 +19,16 @@ type BidReview struct {
 	// Описание предложения
 	Description string `json:"description"`
 
-	// Серверная дата и время в момент, когда пользователь отправил отзыв на предложение. Передается в формате RFC3339. 
+	// Серверная дата и время в момент, когда пользователь отправил отзыв на предложение. Передается в формате RFC3339.
 	CreatedAt string `json:"createdAt"`
 }
 
 // AssertBidReviewRequired checks if the required fields are not zero-ed
 func AssertBidReviewRequired(obj BidReview) error {
 	elements := map[string]interface{}{
-		"id": obj.Id,
+		"id":          obj.Id,
 		"description": obj.Description,
-		"createdAt": obj.CreatedAt,
+		"createdAt":   obj.CreatedAt,
 	}
 	for name, el := range elements {
 		if isZero := IsZeroValue(el); isZero {

@@ -1,4 +1,4 @@
-FROM golang:1.19 AS build
+FROM golang:1.22.3 AS build
 WORKDIR /go/src
 COPY src/generated-go-server/go ./go
 COPY src/generated-go-server/main.go .

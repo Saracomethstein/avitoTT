@@ -3,7 +3,7 @@
 /*
  * Tender Management API
  *
- * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка). 
+ * API для управления тендерами и предложениями.   Основные функции API включают управление тендерами (создание, изменение, получение списка) и управление предложениями (создание, изменение, получение списка).
  *
  * API version: 1.0
  */
@@ -14,14 +14,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	// "reflect"
 
 	"github.com/gorilla/mux"
 )
 
 // DefaultAPIController binds http requests to an api service and writes the service results to the http response
 type DefaultAPIController struct {
-	service DefaultAPIServicer
+	service      DefaultAPIServicer
 	errorHandler ErrorHandler
 }
 

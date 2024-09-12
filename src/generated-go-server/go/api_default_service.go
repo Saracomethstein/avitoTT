@@ -12,90 +12,247 @@ package openapi
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"log"
+	"github.com/Masterminds/squirrel"
+	"github.com/google/uuid"
+	"log/slog"
 	"net/http"
-	"fmt"
-	"strings"
-	// "reflect"
+	"time"
 )
 
 // DefaultAPIService is a service that implements the logic for the DefaultAPIServicer
 // This service should implement the business logic for every endpoint for the DefaultAPI API.
 // Include any external packages or services that will be required by this service.
 type DefaultAPIService struct {
-	DB *sql.DB
+	pg      *Postgres
+	log     *slog.Logger
+	builder squirrel.StatementBuilderType
 }
 
 // NewDefaultAPIService creates a default api service
-func NewDefaultAPIService(db *sql.DB) *DefaultAPIService {
+func NewDefaultAPIService(pg *Postgres, log *slog.Logger) *DefaultAPIService {
 	return &DefaultAPIService{
-		DB: db,
+		pg:      pg,
+		log:     log,
+		builder: pg.Builder,
 	}
 }
 
 // CheckServer - Проверка доступности сервера
 func (s *DefaultAPIService) CheckServer(ctx context.Context) (ImplResponse, error) {
-	return ImplResponse{Code: http.StatusOK, Body: "ok"}, nil
+	if err := s.pg.Pool.Ping(ctx); err != nil {
+		return Response(http.StatusInternalServerError, nil), nil
+	}
+	return Response(http.StatusOK, "ok"), nil
 }
 
 // CreateBid - Создание нового предложения
 func (s *DefaultAPIService) CreateBid(ctx context.Context, createBidRequest CreateBidRequest) (ImplResponse, error) {
-	// TODO - update CreateBid with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	const op = "CreateBid"
+	log := s.log.With(slog.String("op", op))
 
-	// TODO: Uncomment the next line to return response Response(200, Bid{}) or use other options such as http.Ok ...
-	// return Response(200, Bid{}), nil
+	// Проверка, что все обязательные поля присутствуют
+	if err := AssertCreateBidRequestRequired(createBidRequest); err != nil {
+		log.Error("Missing required fields", slog.Any("error", err))
+		return Response(http.StatusBadRequest, ErrorResponse{Reason: "Missing required fields"}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
+	// Проверка ограничений на длину и правильность значений
+	if err := AssertCreateBidRequestConstraints(createBidRequest); err != nil {
+		log.Error("Constraint validation failed", slog.Any("error", err))
+		return Response(http.StatusBadRequest, ErrorResponse{Reason: err.Error()}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(401, ErrorResponse{}), nil
+	// Проверяем, существует ли тендер с таким ID
+	tenderId, _ := s.ConvertIntoUUID(createBidRequest.TenderId)
+	authorId, _ := s.ConvertIntoUUID(createBidRequest.AuthorId)
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
+	err := s.getTenderById(ctx, tenderId)
+	if err == nil {
+		if errors.Is(err, ErrNotFound) {
+			return Response(http.StatusNotFound, ErrorResponse{Reason: "Тендер не найден"}), nil
+		}
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), nil
+	}
 
-	return Response(http.StatusNotImplemented, nil), errors.New("CreateBid method not implemented")
+	if createBidRequest.AuthorType == USER {
+		_, err := s.getUserById(ctx, authorId)
+		if err != nil {
+			if errors.Is(err, ErrNoUser) {
+				return Response(http.StatusUnauthorized, ErrorResponse{Reason: "Пользователь не существует или некорректен"}), nil
+			}
+			return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+		}
+		if err := s.userHasRights(ctx, authorId, tenderId); err != nil {
+			if errors.Is(err, ErrUserNoRightsTender) {
+				return Response(http.StatusForbidden, ErrorResponse{Reason: "Недостаточно прав для выполнения действия"}), nil
+			}
+			return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+		}
+
+	} else if createBidRequest.AuthorType == ORGANIZATION {
+		_, err := s.getOrganizationById(ctx, authorId)
+		if err != nil {
+			if errors.Is(err, ErrNoOrganization) {
+				return Response(http.StatusUnauthorized, ErrorResponse{Reason: "Организация не существует или некорректна"}), nil
+			}
+			return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+		}
+		if err := s.organizationHasRights(ctx, authorId, tenderId); err != nil {
+			if errors.Is(err, ErrOrgNoRightsTender) {
+				return Response(http.StatusForbidden, ErrorResponse{Reason: "Недостаточно прав для выполнения действия"}), nil
+			}
+			return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+		}
+
+	}
+
+	sql, args, err := s.builder.
+		Insert("bids").
+		Columns("name", "description", "status", "tender_id", "author_type", "author_id", "created_at").
+		Values(createBidRequest.Name, createBidRequest.Description, CREATED, createBidRequest.TenderId, createBidRequest.AuthorType, createBidRequest.AuthorId, time.Now()).
+		Suffix("RETURNING id, created_at").
+		ToSql()
+
+	if err != nil {
+		log.Error("SQL generation failed", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Internal server error"}), nil
+	}
+
+	var newBidID uuid.UUID
+	var createdAt time.Time
+	err = s.pg.Pool.QueryRow(ctx, sql, args...).Scan(&newBidID, &createdAt)
+	if err != nil {
+		log.Error("Database execution failed", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Internal server error"}), nil
+	}
+
+	// Формируем ответ с созданным предложением
+	bidResponse := Bid{
+		Id:         s.ConvertFromUUID(newBidID),
+		Name:       createBidRequest.Name,
+		Status:     "Created",
+		AuthorType: createBidRequest.AuthorType,
+		AuthorId:   createBidRequest.AuthorId,
+		Version:    1,
+		CreatedAt:  createdAt,
+	}
+
+	return Response(http.StatusOK, bidResponse), nil
 }
 
 // CreateTender - Создание нового тендера
 func (s *DefaultAPIService) CreateTender(ctx context.Context, createTenderRequest CreateTenderRequest) (ImplResponse, error) {
-	query := `
-    INSERT INTO tenders (name, description, service_type, status, organization_id) 
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING id, name, description, service_type, status, organization_id;
-    `
-	log.Println("Post request in func.")
+	const op = "DefaultAPIService.CreateTender"
+	log := s.log.With(slog.String("op", op))
 
-    var tender Tender
-    err := s.DB.QueryRowContext(ctx, query,
-        createTenderRequest.Name,
-        createTenderRequest.Description,
-        createTenderRequest.ServiceType,
-        createTenderRequest.Status,
-        createTenderRequest.OrganizationId).Scan(
-        &tender.Id,
-        &tender.Name,
-        &tender.Description,
-        &tender.ServiceType,
-        &tender.Status,
-        &tender.OrganizationId)
+	orgId, _ := s.ConvertIntoUUID(createTenderRequest.OrganizationId)
 
-    if err != nil {
-		log.Println("Tender get error!")
-        return ImplResponse{Code: http.StatusInternalServerError}, err
-    }
+	_, err := s.getUserByName(ctx, createTenderRequest.CreatorUsername)
+	if err != nil {
+		log.Error("no user by name", slog.Any("error", err))
+		if errors.Is(err, ErrNoUser) {
+			return Response(http.StatusUnauthorized, ErrorResponse{Reason: "Пользователь не существует или некорректен"}), nil
+		}
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+	}
 
-    return ImplResponse{
-        Code: http.StatusOK,
-        Body: tender,
-    }, nil
+	if err := s.userBelongsToOrganization(ctx, createTenderRequest.CreatorUsername, orgId); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Response(http.StatusForbidden, ErrorResponse{Reason: "Недостаточно прав для выполнения действия"}), nil
+		}
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+	}
+
+	orgIdUUID, _ := s.ConvertIntoUUID(createTenderRequest.OrganizationId)
+
+	sql, args, err := s.builder.
+		Insert("tenders").
+		Columns("name", "description", "status", "service_type", "organization_id", "version", "creator_username").
+		Values(createTenderRequest.Name, createTenderRequest.Description, CREATED, createTenderRequest.ServiceType, orgIdUUID, 1, createTenderRequest.CreatorUsername).
+		Suffix("RETURNING id, created_at").
+		ToSql()
+
+	if err != nil {
+		log.Error("Failed to build SQL", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "SQL query error"}), err
+	}
+
+	var id uuid.UUID
+	var createdAt time.Time
+	err = s.pg.Pool.QueryRow(ctx, sql, args...).Scan(&id, &createdAt)
+	if err != nil {
+		log.Error("Failed to execute SQL", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Failed to create tender"}), err
+	}
+
+	tenderResponse := Tender{
+		Id:             s.ConvertFromUUID(id),
+		Name:           createTenderRequest.Name,
+		Description:    createTenderRequest.Description,
+		ServiceType:    createTenderRequest.ServiceType,
+		Status:         CREATED,
+		OrganizationId: createTenderRequest.OrganizationId,
+		Version:        1,
+		CreatedAt:      createdAt,
+	}
+
+	return Response(http.StatusOK, tenderResponse), s.addVersionTable(ctx, &tenderResponse)
 }
 
 // EditBid - Редактирование параметров предложения
 func (s *DefaultAPIService) EditBid(ctx context.Context, bidId string, username string, editBidRequest EditBidRequest) (ImplResponse, error) {
+	const op = "EditBid"
+	log := s.log.With(slog.String("op", op))
+
+	user, err := s.getUserByName(ctx, username)
+	if err != nil {
+		if errors.Is(err, ErrNoUser) {
+			return Response(http.StatusUnauthorized, ErrorResponse{Reason: "Пользователь не существует или некорректен"}), nil
+		}
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+	}
+
+	bidIdUUID, _ := s.ConvertIntoUUID(bidId)
+	bid, err := s.getBidById(ctx, bidIdUUID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Response(http.StatusNotFound, ErrorResponse{Reason: "Предложение не найдено"}), nil
+		}
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: err.Error()}), err
+	}
+
+	if s.ConvertFromUUID(user.Id) != bid.AuthorId {
+		log.Error("user has no permission to edit this bid", slog.Any("error", err))
+		return Response(http.StatusForbidden, ErrorResponse{Reason: "Недостаточно прав для выполнения действия"}), nil
+	}
+
+	sqlBuilder := s.builder.Update("bids")
+
+	if editBidRequest.Name != "" {
+		sqlBuilder = sqlBuilder.Set("name", editBidRequest.Name)
+	}
+	if editBidRequest.Description != "" {
+		sqlBuilder = sqlBuilder.Set("description", editBidRequest.Description)
+	}
+
+	sql, args, err := sqlBuilder.Where(squirrel.Eq{"bid_id": bidIdUUID}).ToSql()
+	if err != nil {
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Failed to edit bid."}), nil
+	}
+
+	_, err = s.pg.Pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Failed to edit bid."}), nil
+	}
+
+	updatedBid, err := s.getBidById(ctx, bidIdUUID)
+	if err != nil {
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Failed to get updated bid"}), nil
+	}
+
+	return Response(http.StatusOK, updatedBid), nil
+
 	// TODO - update EditBid with the required logic for this service method.
 	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
 
@@ -108,8 +265,11 @@ func (s *DefaultAPIService) EditBid(ctx context.Context, bidId string, username 
 	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(401, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
+	// TODO: Uncomment the next line to return response Response(403, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(403, ErrorResponse{}), nil
+
+	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(404, ErrorResponse{}), nil
 
 	return Response(http.StatusNotImplemented, nil), errors.New("EditBid method not implemented")
 }
@@ -128,8 +288,11 @@ func (s *DefaultAPIService) EditTender(ctx context.Context, tenderId string, use
 	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(401, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
+	// TODO: Uncomment the next line to return response Response(403, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(403, ErrorResponse{}), nil
+
+	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(404, ErrorResponse{}), nil
 
 	return Response(http.StatusNotImplemented, nil), errors.New("EditTender method not implemented")
 }
@@ -154,9 +317,6 @@ func (s *DefaultAPIService) GetBidReviews(ctx context.Context, tenderId string, 
 	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(404, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
 	return Response(http.StatusNotImplemented, nil), errors.New("GetBidReviews method not implemented")
 }
 
@@ -168,14 +328,14 @@ func (s *DefaultAPIService) GetBidStatus(ctx context.Context, bidId string, user
 	// TODO: Uncomment the next line to return response Response(200, BidStatus{}) or use other options such as http.Ok ...
 	// return Response(200, BidStatus{}), nil
 
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
-
 	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(401, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
+	// TODO: Uncomment the next line to return response Response(403, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(403, ErrorResponse{}), nil
+
+	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(404, ErrorResponse{}), nil
 
 	return Response(http.StatusNotImplemented, nil), errors.New("GetBidStatus method not implemented")
 }
@@ -200,9 +360,6 @@ func (s *DefaultAPIService) GetBidsForTender(ctx context.Context, tenderId strin
 	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(404, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
 	return Response(http.StatusNotImplemented, nil), errors.New("GetBidsForTender method not implemented")
 }
 
@@ -214,128 +371,194 @@ func (s *DefaultAPIService) GetTenderStatus(ctx context.Context, tenderId string
 	// TODO: Uncomment the next line to return response Response(200, TenderStatus{}) or use other options such as http.Ok ...
 	// return Response(200, TenderStatus{}), nil
 
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
-
 	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(401, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
+	// TODO: Uncomment the next line to return response Response(403, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(403, ErrorResponse{}), nil
+
+	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
+	// return Response(404, ErrorResponse{}), nil
 
 	return Response(http.StatusNotImplemented, nil), errors.New("GetTenderStatus method not implemented")
 }
 
-// GetTenders - Получение списка тендеров
+// Saracomethstein started //
+
+// GetTenders - Получение списка тендеров (error review)
+// Request: GET
 func (s *DefaultAPIService) GetTenders(ctx context.Context, limit int32, offset int32, serviceType []TenderServiceType) (ImplResponse, error) {
-	    // Преобразование среза в строку
-		if len(serviceType) == 0 {
-			query := `SELECT id, name, description, service_type, status, version, organization_id, created_at
-					  FROM tenders
-					  LIMIT $1 OFFSET $2`
-			rows, err := s.DB.QueryContext(ctx, query, limit, offset)
-			if err != nil {
-				return ImplResponse{Code: http.StatusInternalServerError, Body: "Error querying database"}, err
-			}
-			defer rows.Close()
-	
-			var tenders []Tender
-			for rows.Next() {
-				var tender Tender
-				if err := rows.Scan(&tender.Id, &tender.Name, &tender.Description, &tender.ServiceType, &tender.Status, &tender.OrganizationId, &tender.Version, &tender.CreatedAt); err != nil {
-					return ImplResponse{Code: http.StatusInternalServerError, Body: "Error scanning rows"}, err
-				}
-				tenders = append(tenders, tender)
-			}
-	
-			if err := rows.Err(); err != nil {
-				return ImplResponse{Code: http.StatusInternalServerError, Body: "Error during iteration"}, err
-			}
-	
-			response := ImplResponse{
-				Code: http.StatusOK,
-				Body: tenders,
-			}
-			return response, nil
-		}
-	
-		// Преобразование среза в строку
-		serviceTypeStrings := make([]string, len(serviceType))
-		for i, st := range serviceType {
-			serviceTypeStrings[i] = string(st) // предполагаем, что TenderServiceType можно привести к строке
-		}
-		serviceTypeStr := strings.Join(serviceTypeStrings, "','") // Форматируем как строки SQL (например, 'type1','type2')
-		serviceTypeStr = fmt.Sprintf("('%s')", serviceTypeStr) // Оборачиваем в скобки
-	
-		query := fmt.Sprintf(`SELECT id, name, description, service_type, status, version, organization_id, created_at
-							 FROM tenders
-							 WHERE service_type IN %s
-							 LIMIT $1 OFFSET $2`, serviceTypeStr)
-	
-		rows, err := s.DB.QueryContext(ctx, query, limit, offset)
-		if err != nil {
-			return ImplResponse{Code: http.StatusInternalServerError, Body: "Error querying database"}, err
-		}
-		defer rows.Close()
-		
-		var tenders []Tender
-		for rows.Next() {
-			var tender Tender
-			if err := rows.Scan(&tender.Id, &tender.Name, &tender.Description, &tender.ServiceType, &tender.Status, &tender.OrganizationId, &tender.Version, &tender.CreatedAt); err != nil {
-				return ImplResponse{Code: http.StatusInternalServerError, Body: "Error scanning rows"}, err
-			}
-			tenders = append(tenders, tender)
-		}
-		
-		if err := rows.Err(); err != nil {
-			return ImplResponse{Code: http.StatusInternalServerError, Body: "Error during iteration"}, err
-		}
-	
-		response := ImplResponse{
-			Code: http.StatusOK,
-			Body: tenders,
-		}
-		return response, nil
+	s.log.Info("Request received in GetTenders", slog.Int("limit", int(limit)), slog.Int("offset", int(offset)), slog.Any("serviceType", serviceType))
+
+    for i := range serviceType {
+        if !serviceType[i].IsValid() {
+            return Response(http.StatusBadRequest, ErrorResponse{Reason: "service type not valid."}), nil
+        }
+    }
+
+    queryBuilder := s.builder.
+        Select("id, name, description, service_type, status, organization_id, version, created_at").
+        From("tenders").
+        Limit(uint64(limit)).
+        Offset(uint64(offset))
+
+    if len(serviceType) > 0 {
+        queryBuilder = queryBuilder.Where(squirrel.Eq{"service_type": serviceType})
+    }
+
+	if limit > 0 {
+        queryBuilder = queryBuilder.Limit(uint64(limit))
+    }
+
+    if offset > 0 {
+        queryBuilder = queryBuilder.Offset(uint64(offset))
+    }
+
+    sql, args, err := queryBuilder.ToSql()
+    if err != nil {
+        s.log.Error("Failed to build SQL", slog.Any("error", err))
+        return Response(http.StatusInternalServerError, ErrorResponse{Reason: "SQL query error"}), err
+    }
+
+    s.log.Info("SQL query built", slog.String("sql", sql), slog.Any("args", args))
+
+    rows, err := s.pg.Pool.Query(ctx, sql, args...)
+    if err != nil {
+        s.log.Error("Failed to execute query", slog.Any("error", err))
+        return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Database query failed"}), err
+    }
+    defer rows.Close()
+
+    var tenders []Tender
+    for rows.Next() {
+        var tender Tender
+        err := rows.Scan(&tender.Id, &tender.Name, &tender.Description, &tender.ServiceType, &tender.Status, &tender.OrganizationId, &tender.Version, &tender.CreatedAt)
+        if err != nil {
+            s.log.Error("Failed to scan row", slog.Any("error", err))
+            return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Failed to parse database result"}), err
+        }
+        tenders = append(tenders, tender)
+    }
+
+    if err = rows.Err(); err != nil {
+        s.log.Error("Error during rows iteration", slog.Any("error", err))
+        return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Error while fetching tenders"}), err
+    }
+
+    s.log.Info("Successfully fetched tenders", slog.Any("tenders", tenders))
+
+    return ImplResponse{
+        Code: http.StatusOK,
+        Body: tenders,
+    }, nil
 }
 
-// GetUserBids - Получение списка ваших предложений
+// GetUserBids - Получение списка ваших предложений (error review)
+// Request: GET
 func (s *DefaultAPIService) GetUserBids(ctx context.Context, limit int32, offset int32, username string) (ImplResponse, error) {
-	// TODO - update GetUserBids with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	if username == "" {
+		return Response(http.StatusBadRequest, ErrorResponse{Reason: "username dose nor exist."}), nil
+	}
+	
+	var userId uuid.UUID
+	sql, args, err := s.builder.
+		Select("id").
+		From("employee").
+		Where(squirrel.Eq{"username": username}).
+		ToSql()
 
-	// TODO: Uncomment the next line to return response Response(200, []Bid{}) or use other options such as http.Ok ...
-	// return Response(200, []Bid{}), nil
+	if err != nil {
+		s.log.Error("Failed to build SQL query", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "SQL query error"}), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
+	err = s.pg.Pool.QueryRow(ctx, sql, args...).Scan(&userId)
+	if err != nil {
+		s.log.Error("Failed to execute SQL query", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Database query error"}), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(401, ErrorResponse{}), nil
+	sql, args, err = s.builder.
+		Select("bid_id, name, status, author_type, author_id, version, created_at").
+		From("bids").
+		Where(squirrel.Eq{"author_id": userId}).
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
+	if err != nil {
+		s.log.Error("Failed to build SQL query", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "SQL query error"}), err
+	}
 
-	return Response(http.StatusNotImplemented, nil), errors.New("GetUserBids method not implemented")
+	rows, err := s.pg.Pool.Query(ctx, sql, args...)
+	if err != nil {
+		s.log.Error("Failed to execute SQL query", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Database query error"}), err
+	}
+	defer rows.Close()
+
+	var bids []Bid
+	for rows.Next() {
+		var bid Bid
+		if err := rows.Scan(&bid.Id, &bid.Name, &bid.Status, &bid.AuthorType, &bid.AuthorId, &bid.Version, &bid.CreatedAt); err != nil {
+			s.log.Error("Failed to scan row", slog.Any("error", err))
+			return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Data scan error"}), err
+		}
+		bids = append(bids, bid)
+	}
+
+	if err := rows.Err(); err != nil {
+		s.log.Error("Error occurred during rows iteration", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Rows iteration error"}), err
+	}
+
+	return Response(http.StatusOK, bids), nil
 }
 
-// GetUserTenders - Получить тендеры пользователя
+// GetUserTenders - Получить тендеры пользователя (not implemented)
+// Request: Get
 func (s *DefaultAPIService) GetUserTenders(ctx context.Context, limit int32, offset int32, username string) (ImplResponse, error) {
-	// TODO - update GetUserTenders with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	if username == "" {
+		return Response(http.StatusBadRequest, ErrorResponse{Reason: "username dose nor exist."}), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, []Tender{}) or use other options such as http.Ok ...
-	// return Response(200, []Tender{}), nil
+	sql, args, err := s.builder.
+		Select("id, name, description, status, service_type, version, created_at").
+		From("tenders").
+		Where(squirrel.Eq{"creator_username": username}).
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
 
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
+	if err != nil {
+		s.log.Error("Failed to build SQL query", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "SQL query error"}), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(401, ErrorResponse{}), nil
+	rows, err := s.pg.Pool.Query(ctx, sql, args...)
+	if err != nil {
+		s.log.Error("Failed to execute SQL query", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Database query error"}), err
+	}
+	defer rows.Close()
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
+	var tenders []Tender
+	for rows.Next() {
+		var tender Tender
+		if err := rows.Scan(&tender.Id, &tender.Name, &tender.Description, &tender.Status, &tender.ServiceType, &tender.Version, &tender.CreatedAt); err != nil {
+			s.log.Error("Failed to scan row", slog.Any("error", err))
+			return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Data scan error"}), err
+		}
+		tenders = append(tenders, tender)
+	}
 
-	return Response(http.StatusNotImplemented, nil), errors.New("GetUserTenders method not implemented")
+	if err := rows.Err(); err != nil {
+		s.log.Error("Error occurred during rows iteration", slog.Any("error", err))
+		return Response(http.StatusInternalServerError, ErrorResponse{Reason: "Rows iteration error"}), err
+	}
+
+	return Response(http.StatusOK, tenders), nil
 }
 
 // RollbackBid - Откат версии предложения
@@ -357,9 +580,6 @@ func (s *DefaultAPIService) RollbackBid(ctx context.Context, bidId string, versi
 
 	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(404, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
 
 	return Response(http.StatusNotImplemented, nil), errors.New("RollbackBid method not implemented")
 }
@@ -384,9 +604,6 @@ func (s *DefaultAPIService) RollbackTender(ctx context.Context, tenderId string,
 	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(404, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
 	return Response(http.StatusNotImplemented, nil), errors.New("RollbackTender method not implemented")
 }
 
@@ -409,9 +626,6 @@ func (s *DefaultAPIService) SubmitBidDecision(ctx context.Context, bidId string,
 
 	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(404, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
 
 	return Response(http.StatusNotImplemented, nil), errors.New("SubmitBidDecision method not implemented")
 }
@@ -436,35 +650,11 @@ func (s *DefaultAPIService) SubmitBidFeedback(ctx context.Context, bidId string,
 	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(404, ErrorResponse{}), nil
 
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
 	return Response(http.StatusNotImplemented, nil), errors.New("SubmitBidFeedback method not implemented")
 }
 
 // UpdateBidStatus - Изменение статуса предложения
 func (s *DefaultAPIService) UpdateBidStatus(ctx context.Context, bidId string, status BidStatus, username string) (ImplResponse, error) {
-	// TODO - update UpdateBidStatus with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, Bid{}) or use other options such as http.Ok ...
-	// return Response(200, Bid{}), nil
-
-	// TODO: Uncomment the next line to return response Response(400, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(400, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(401, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(401, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(403, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(403, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
-	// return Response(404, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
 	return Response(http.StatusNotImplemented, nil), errors.New("UpdateBidStatus method not implemented")
 }
 
@@ -487,9 +677,6 @@ func (s *DefaultAPIService) UpdateTenderStatus(ctx context.Context, tenderId str
 
 	// TODO: Uncomment the next line to return response Response(404, ErrorResponse{}) or use other options such as http.Ok ...
 	// return Response(404, ErrorResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
 
 	return Response(http.StatusNotImplemented, nil), errors.New("UpdateTenderStatus method not implemented")
 }
