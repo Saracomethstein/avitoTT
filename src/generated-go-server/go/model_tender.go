@@ -12,7 +12,6 @@ package openapi
 
 import (
 	"errors"
-	"time"
 )
 
 // Tender - Информация о тендере
@@ -27,18 +26,18 @@ type Tender struct {
 	// Описание тендера
 	Description string `json:"description"`
 
-	ServiceType TenderServiceType `json:"serviceType"`
-
 	Status TenderStatus `json:"status"`
 
+	ServiceType TenderServiceType `json:"serviceType"`
+
 	// Уникальный идентификатор организации, присвоенный сервером.
-	OrganizationId string `json:"organizationId"`
+	OrganizationId string `json:"organizationId,omitempty"`
 
 	// Номер версии посел правок
 	Version int32 `json:"version"`
 
 	// Серверная дата и время в момент, когда пользователь отправил тендер на создание. Передается в формате RFC3339.
-	CreatedAt time.Time `json:"createdAt"`
+	CreatedAt string `json:"createdAt"`
 }
 
 // AssertTenderRequired checks if the required fields are not zero-ed

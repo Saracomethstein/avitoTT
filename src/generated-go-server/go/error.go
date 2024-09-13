@@ -48,6 +48,14 @@ func (e *RequiredError) Error() string {
 	return fmt.Sprintf("required field '%s' is zero value.", e.Field)
 }
 
+type ValidationError struct {
+	Field string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Field
+}
+
 // ErrorHandler defines the required method for handling error. You may implement it and inject this into a controller if
 // you would like errors to be handled differently from the DefaultErrorHandler
 type ErrorHandler func(w http.ResponseWriter, r *http.Request, err error, result *ImplResponse)
@@ -69,8 +77,28 @@ func DefaultErrorHandler(w http.ResponseWriter, _ *http.Request, err error, resu
 		return
 	}
 
-	_ = EncodeJSONResponse(err.Error(), &result.Code, w)
+	var validErr *ValidationError
+	if ok := errors.As(err, &validErr); ok {
+
+		// Handle missing required errors
+		_ = EncodeJSONResponse(err.Error(), func(i int) *int { return &i }(http.StatusBadRequest), w)
+		return
+	}
+
+	if result.Code == http.StatusBadRequest {
+		_ = EncodeJSONResponse(result.Body, func(i int) *int { return &i }(http.StatusBadRequest), w)
+		return
+	}
+
+	if result.Code == http.StatusNotFound{
+		_ = EncodeJSONResponse(result.Body, func(i int) *int { return &i }(http.StatusNotFound), w)
+		return
+	}
+	_ = EncodeJSONResponse(err.Error(), func(i int) *int { return &i }(http.StatusInternalServerError), w)
+	return
+
 }
+
 
 var (
 	ErrNotFound      = errors.New("not found")

@@ -19,9 +19,9 @@ type BidStatus string
 
 // List of BidStatus
 const (
-	//CREATED   BidStatus = "Created"
-	//PUBLISHED BidStatus = "Published"
-	CANCELED BidStatus = "Canceled"
+	CREATED_BID   BidStatus = "Created"
+	PUBLISHED_BID BidStatus = "Published"
+	CANCELED_BID  BidStatus = "Canceled"
 )
 
 // AllowedBidStatusEnumValues is all the allowed values of BidStatus enum

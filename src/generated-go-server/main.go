@@ -8,52 +8,52 @@
  * API version: 1.0
  */
 
-package main
+ package main
 
-import (
-	"log"
-	"log/slog"
-	"net/http"
-	"os"
-
-	openapi "github.com/GIT_USER_ID/GIT_REPO_ID/go"
-)
-
-const (
-	envLocal = "local"
-	envDev   = "dev"
-	envProd  = "prod"
-)
-
-func main() {
-	config := openapi.MustLoad()
-	log.Printf("Server started on port %s", config.ServerAddress)
-	loggerSlog := setupLogger("local")
-	psql, err := openapi.NewStorage(config.PostgresConn, loggerSlog)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer psql.Close()
-
-	DefaultAPIService := openapi.NewDefaultAPIService(psql, loggerSlog)
-	DefaultAPIController := openapi.NewDefaultAPIController(DefaultAPIService)
-
-	router := openapi.NewRouter(DefaultAPIController)
-
-	log.Fatal(http.ListenAndServe(":8080", router))
-}
-
-func setupLogger(env string) *slog.Logger {
-	var log *slog.Logger
-
-	switch env {
-	case envLocal:
-		log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	case envDev:
-		log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	case envProd:
-		log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	}
-
-	return log
-}
+ import (
+	 "log"
+	 "log/slog"
+	 "net/http"
+	 "os"
+ 
+	 openapi "github.com/GIT_USER_ID/GIT_REPO_ID/go"
+ )
+ 
+ const (
+	 envLocal = "local"
+	 envDev   = "dev"
+	 envProd  = "prod"
+ )
+ 
+ func main() {
+	 config := openapi.MustLoad()
+	 log.Printf("Server started on port %s", config.ServerAddress)
+	 loggerSlog := setupLogger("local")
+	 psql, err := openapi.NewStorage(config.PostgresConn, loggerSlog)
+	 if err != nil {
+		 log.Fatal(err)
+	 }
+	 defer psql.Close()
+ 
+	 DefaultAPIService := openapi.NewDefaultAPIService(psql, loggerSlog)
+	 DefaultAPIController := openapi.NewDefaultAPIController(DefaultAPIService)
+ 
+	 router := openapi.NewRouter(DefaultAPIController)
+ 
+	 log.Fatal(http.ListenAndServe(":8080", router))
+ }
+ 
+ func setupLogger(env string) *slog.Logger {
+	 var log *slog.Logger
+ 
+	 switch env {
+	 case envLocal:
+		 log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	 case envDev:
+		 log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	 case envProd:
+		 log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	 }
+ 
+	 return log
+ }
