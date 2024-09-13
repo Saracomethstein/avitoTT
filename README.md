@@ -1,28 +1,18 @@
-## Структура проекта
-В данном проекте находится типовой пример для сборки приложения в докере из находящящегося в проекте Dockerfile. Пример на Gradle используется исключительно в качестве шаблона, вы можете переписать проект как вам хочется - главное, что бы Dockerfile находился в корне проекта и приложение отвечало по порту 8080. Других требований нет.
+# Avito Test Task
 
-## Задание
-В папке "задание" размещена задача.
+This project is a Go-based implementation designed to run in a Docker environment. It follows the guidelines of the Avito test task, showcasing a service for managing tenders and bids.
 
-## Сбор и развертывание приложения
-Приложение должно отвечать по порту `8080` (жестко задано в настройках деплоя). После деплоя оно будет доступно по адресу: `https://<имя_проекта>-<уникальный_идентификатор_группы_группы>.avito2024.codenrock.com`
+## Project Structure
 
-Пример: Для кода из репозитория `/avito2024/cnrprod-team-27437/task1` сформируется домен
+- **Backend**: Contains Go server code.
+- **db**: Database initialization scripts.
+- **Dockerfile**: Configures the build and runtime environment.
 
-```
-task1-5447.avito2024.codenrock.com
-```
+## Running the Project
 
-**Для удобства домен указывается в логе сборки**
+1. Build the Docker image: `make docker-up`
+2. The service will be available at: `http://localhost:8080`.
 
-Логи сборки проекта находятся на вкладке **CI/CD** -> **Jobs**.
+## Acknowledgment
 
-Ссылка на собранный проект находится на вкладке **Deployments** -> **Environment**. Вы можете сразу открыть URL по кнопке "Open".
-
-## Доступ к сервисам
-
-### Kubernetes
-На вашу команду выделен kubernetes namespace. Для подключения к нему используйте утилиту `kubectl` и `*.kube.config` файл, который вам выдадут организаторы.
-
-Состояние namespace, работающие pods и логи приложений можно посмотреть по адресу [https://dashboard.avito2024.codenrock.com/](https://dashboard.avito2024.codenrock.com/). Для открытия дашборда необходимо выбрать авторизацию через Kubeconfig и указать путь до выданного вам `*.kube.config` файла
-
+Thanks to Avito for the opportunity and challenge.
