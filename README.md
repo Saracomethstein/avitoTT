@@ -29,9 +29,9 @@ https://cnrprod1725723419-team-78602-32501.avito2024.codenrock.com/api/ping
 ## Инструкия по сборке проекта, который залит в деплой:
 1. Перейдите в папку с проектом:
 ```bash
-cd deploy/
+cd deploy/zadanie-6105/
 ```
-
+ls -l
 2. Соберите проект:
 ```bash
 docker build . -t avito-tender-service
