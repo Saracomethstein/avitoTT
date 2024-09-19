@@ -31,7 +31,7 @@ https://cnrprod1725723419-team-78602-32501.avito2024.codenrock.com/api/ping
 ```bash
 cd deploy/zadanie-6105/
 ```
-ls -l
+
 2. Соберите проект:
 ```bash
 docker build . -t avito-tender-service
